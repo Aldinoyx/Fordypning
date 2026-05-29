@@ -1,113 +1,134 @@
-import pygame
+﻿import random
 import sys
-import random
-import math
+from dataclasses import dataclass
+from typing import List
+
+import pygame
+
+WIDTH, HEIGHT = 800, 600
+FPS = 60
+
+BG = (30, 30, 30)
+PLAYER_COLOR = (0, 200, 255)
+ENEMY_COLOR = (255, 80, 80)
+BULLET_COLOR = (255, 255, 0)
+CROSSHAIR_COLOR = (255, 255, 255)
+
+PLAYER_SIZE = 50
+ENEMY_SIZE = 50
+PLAYER_SPEED = 5
+ENEMY_SPEED = 2
+BULLET_SPEED = 10
+BULLET_SIZE = (10, 5)
 
 pygame.init()
 
-# Screen
-WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Pygame Shooter")
+pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
 
-# Player
-player_size = 50
-player_x = WIDTH // 2
-player_y = HEIGHT // 2
-player_speed = 5
-direction = "right"  # start retning
 
-# Enemy
-enemy_size = 50
-enemy_x = random.randint(0, WIDTH)
-enemy_y = random.randint(0, HEIGHT)
-enemy_speed = 2
+@dataclass
+class Entity:
+    rect: pygame.Rect
+    color: tuple
+    speed: float
 
-# Bullets
-bullets = []
-bullet_speed = 10
 
-# Game loop
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
+@dataclass
+class Bullet:
+    rect: pygame.Rect
+    velocity: pygame.math.Vector2
 
-        # Shoot
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                bullets.append([player_x, player_y, direction])
 
-    keys = pygame.key.get_pressed()
+def clamp_rect(rect: pygame.Rect) -> None:
+    rect.left = max(0, min(WIDTH - rect.width, rect.left))
+    rect.top = max(0, min(HEIGHT - rect.height, rect.top))
 
-    # Movement + retning
-    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        player_x -= player_speed
-        direction = "left"
-    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        player_x += player_speed
-        direction = "right"
-    if keys[pygame.K_UP] or keys[pygame.K_w]:
-        player_y -= player_speed
-        direction = "up"
-    if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-        player_y += player_speed
-        direction = "down"
 
-    # Hold på skjerm
-    player_x = max(0, min(WIDTH - player_size, player_x))
-    player_y = max(0, min(HEIGHT - player_size, player_y))
+def create_enemy() -> Entity:
+    x = random.randint(0, WIDTH - ENEMY_SIZE)
+    y = random.randint(0, HEIGHT - ENEMY_SIZE)
+    return Entity(pygame.Rect(x, y, ENEMY_SIZE, ENEMY_SIZE), ENEMY_COLOR, ENEMY_SPEED)
 
-    # -------- Enemy følger spilleren --------
-    dx = player_x - enemy_x
-    dy = player_y - enemy_y
-    distance = math.sqrt(dx**2 + dy**2)
 
-    if distance != 0:
-        enemy_x += (dx / distance) * enemy_speed
-        enemy_y += (dy / distance) * enemy_speed
+def create_bullet(center: tuple[int, int], direction: pygame.math.Vector2) -> Bullet:
+    rect = pygame.Rect(0, 0, *BULLET_SIZE)
+    rect.center = center
+    velocity = direction.normalize() * BULLET_SPEED
+    return Bullet(rect, velocity)
 
-    # -------- Bullets --------
-    for bullet in bullets[:]:
-        if bullet[2] == "right":
-            bullet[0] += bullet_speed
-        elif bullet[2] == "left":
-            bullet[0] -= bullet_speed
-        elif bullet[2] == "up":
-            bullet[1] -= bullet_speed
-        elif bullet[2] == "down":
-            bullet[1] += bullet_speed
 
-        # fjern hvis utenfor skjerm
-        if bullet[0] < 0 or bullet[0] > WIDTH or bullet[1] < 0 or bullet[1] > HEIGHT:
-            bullets.remove(bullet)
+def main() -> None:
+    player = Entity(
+        pygame.Rect(WIDTH // 2 - PLAYER_SIZE // 2, HEIGHT // 2 - PLAYER_SIZE // 2, PLAYER_SIZE, PLAYER_SIZE),
+        PLAYER_COLOR,
+        PLAYER_SPEED,
+    )
+    enemy = create_enemy()
+    bullets: List[Bullet] = []
+    player_direction = pygame.math.Vector2(1, 0)
 
-    # Kollisjon (bullet vs enemy)
-    enemy_rect = pygame.Rect(enemy_x, enemy_y, enemy_size, enemy_size)
+    while True:
+        keys = pygame.key.get_pressed()
+        move = pygame.math.Vector2(0, 0)
 
-    for bullet in bullets[:]:
-        bullet_rect = pygame.Rect(bullet[0], bullet[1], 10, 5)
-        if bullet_rect.colliderect(enemy_rect):
-            bullets.remove(bullet)
-            enemy_x = random.randint(0, WIDTH)
-            enemy_y = random.randint(0, HEIGHT)
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            move.x -= 1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            move.x += 1
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
+            move.y -= 1
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            move.y += 1
 
-    # Draw
-    screen.fill((30, 30, 30))
+        if move.length_squared() > 0:
+            player_direction = move.normalize()
+            player.rect.move_ip(player_direction * player.speed)
 
-    # Player
-    pygame.draw.rect(screen, (0, 200, 255),
-                     (player_x, player_y, player_size, player_size))
+        clamp_rect(player.rect)
 
-    # Enemy
-    pygame.draw.rect(screen, (255, 80, 80),
-                     (enemy_x, enemy_y, enemy_size, enemy_size))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
-    # Bullets
-    for bullet in bullets:
-        pygame.draw.rect(screen, (255, 255, 0),
-                         (bullet[0], bullet[1], 10, 5))
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                bullets.append(create_bullet(player.rect.center, player_direction))
 
-    pygame.display.flip()
-    clock.tick(60)
+        enemy_vector = pygame.math.Vector2(player.rect.center) - pygame.math.Vector2(enemy.rect.center)
+        if enemy_vector.length_squared() > 0:
+            enemy.rect.move_ip(enemy_vector.normalize() * enemy.speed)
+            clamp_rect(enemy.rect)
+
+        next_bullets: List[Bullet] = []
+        for bullet in bullets:
+            bullet.rect.move_ip(bullet.velocity)
+            if not screen.get_rect().colliderect(bullet.rect):
+                continue
+            if bullet.rect.colliderect(enemy.rect):
+                enemy = create_enemy()
+                continue
+            next_bullets.append(bullet)
+
+        bullets = next_bullets
+
+        screen.fill(BG)
+        pygame.draw.rect(screen, player.color, player.rect)
+        pygame.draw.rect(screen, enemy.color, enemy.rect)
+
+        for bullet in bullets:
+            pygame.draw.rect(screen, BULLET_COLOR, bullet.rect)
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        pygame.draw.circle(screen, CROSSHAIR_COLOR, (mouse_x, mouse_y), 15, 2)
+        pygame.draw.line(screen, CROSSHAIR_COLOR, (mouse_x - 20, mouse_y), (mouse_x + 20, mouse_y), 2)
+        pygame.draw.line(screen, CROSSHAIR_COLOR, (mouse_x, mouse_y - 20), (mouse_x, mouse_y + 20), 2)
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
+if __name__ == "__main__":
+    main()
