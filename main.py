@@ -132,3 +132,4 @@ while run:
 
 # Avslutt pygame
 pygame.quit()
+#Test
